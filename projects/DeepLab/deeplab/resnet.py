@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 from detectron2.layers import CNNBlockBase, Conv2d, get_norm
 from detectron2.modeling import BACKBONE_REGISTRY
-from detectron2.modeling.backbone.resnet import (
+from detectron2.modeling.backbone.resnet_SFT import (
     BasicStem,
     BottleneckBlock,
     DeformBottleneckBlock,
