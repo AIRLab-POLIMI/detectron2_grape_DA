@@ -144,6 +144,7 @@ class ROIHeads(torch.nn.Module):
         positive_fraction,
         proposal_matcher,
         proposal_append_gt=True,
+        freeze=False,
     ):
         """
         NOTE: this interface is experimental.
@@ -155,6 +156,7 @@ class ROIHeads(torch.nn.Module):
                 to sample for training.
             proposal_matcher (Matcher): matcher that matches proposals and ground truth
             proposal_append_gt (bool): whether to include ground truth as proposals as well
+            freeze (bool): whether to freeze FC heads or not during training
         """
         super().__init__()
         self.batch_size_per_image = batch_size_per_image
@@ -162,6 +164,7 @@ class ROIHeads(torch.nn.Module):
         self.num_classes = num_classes
         self.proposal_matcher = proposal_matcher
         self.proposal_append_gt = proposal_append_gt
+        self.freeze = freeze
 
     @classmethod
     def from_config(cls, cfg):
@@ -170,6 +173,7 @@ class ROIHeads(torch.nn.Module):
             "positive_fraction": cfg.MODEL.ROI_HEADS.POSITIVE_FRACTION,
             "num_classes": cfg.MODEL.ROI_HEADS.NUM_CLASSES,
             "proposal_append_gt": cfg.MODEL.ROI_HEADS.PROPOSAL_APPEND_GT,
+            "freeze": cfg.MODEL.ROI_HEADS.FREEZE,
             # Matcher to assign box proposals to gt boxes
             "proposal_matcher": Matcher(
                 cfg.MODEL.ROI_HEADS.IOU_THRESHOLDS,
@@ -596,6 +600,14 @@ class StandardROIHeads(ROIHeads):
             self.keypoint_head = keypoint_head
 
         self.train_on_pred_boxes = train_on_pred_boxes
+        #Added: freeze 3 FC layers if True
+        if self.freeze:
+            for p in self.box_head.parameters():
+                p.requires_grad = False
+            for p in self.box_predictor.parameters():
+                p.requires_grad = False
+            for p in self.mask_head.parameters():
+                p.requires_grad = False
 
     @classmethod
     def from_config(cls, cfg, input_shape):

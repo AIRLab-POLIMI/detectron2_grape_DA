@@ -19,10 +19,9 @@ Detectron2 is released under the [Apache 2.0 license](LICENSE).
 ```
 
 ```BibTeX
-@article{lee2022surgical,
+@inproceedings{lee2022surgical,
   title={Surgical Fine-Tuning Improves Adaptation to Distribution Shifts},
   author={Lee, Yoonho and Chen, Annie S and Tajwar, Fahim and Kumar, Ananya and Yao, Huaxiu and Liang, Percy and Finn, Chelsea},
-  journal={arXiv preprint arXiv:2210.11466},
-  year={2022}
+  booktitle={NeurIPS 2022 Workshop on Distribution Shifts: Connecting Methods and Applications}
 }
 ```

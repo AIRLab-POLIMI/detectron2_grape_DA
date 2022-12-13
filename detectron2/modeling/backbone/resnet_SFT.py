@@ -4,6 +4,7 @@ import fvcore.nn.weight_init as weight_init
 import torch
 import torch.nn.functional as F
 from torch import nn
+from torch.nn import Module
 
 from detectron2.layers import (
     CNNBlockBase,
@@ -363,6 +364,7 @@ class ResNet(Backbone):
     """
     Implement :paper:`ResNet`.
     """
+    stem: Module
 
     def __init__(self, stem, stages, num_classes=None, out_features=None, freeze_at=0, sft_at=0):
         """
@@ -484,7 +486,7 @@ class ResNet(Backbone):
             nn.Module: this ResNet itself
         """
         if freeze_at >= 1:
-            self.stem.freeze()
+            self.stem.freeze() #freeze function defined under layers.blocks.CNNBlockBase
         for idx, stage in enumerate(self.stages, start=2):
             if freeze_at >= idx:
                 for block in stage.children():
