@@ -135,6 +135,7 @@ _C.MODEL.BACKBONE.NAME = "build_resnet_backbone"
 # There are 5 stages in ResNet. The first is a convolution, and the following
 # stages are each group of residual blocks.
 _C.MODEL.BACKBONE.FREEZE_AT = 2
+_C.MODEL.BACKBONE.SFT_AT = 0
 
 
 # ---------------------------------------------------------------------------- #
@@ -282,6 +283,9 @@ _C.MODEL.ROI_HEADS.NMS_THRESH_TEST = 0.5
 # If True, augment proposals with ground-truth boxes before sampling proposals to
 # train ROI heads.
 _C.MODEL.ROI_HEADS.PROPOSAL_APPEND_GT = True
+#Boolean label for freezing the ROI heads or not
+_C.MODEL.ROI_HEADS.FREEZE = False
+
 
 # ---------------------------------------------------------------------------- #
 # Box Head
