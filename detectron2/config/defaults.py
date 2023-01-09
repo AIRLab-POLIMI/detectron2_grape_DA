@@ -154,7 +154,7 @@ _C.MODEL.FPN.NORM = ""
 # Types for fusing the FPN top-down and lateral features. Can be either "sum" or "avg"
 _C.MODEL.FPN.FUSE_TYPE = "sum"
 
-_C.MODEL.FPN.SFT_AT = 1
+_C.MODEL.FPN.SFT_AT = 0
 
 # ---------------------------------------------------------------------------- #
 # Proposal generator options
@@ -245,6 +245,8 @@ _C.MODEL.RPN.POST_NMS_TOPK_TEST = 1000
 _C.MODEL.RPN.NMS_THRESH = 0.7
 # Set this to -1 to use the same number of output channels as input channels.
 _C.MODEL.RPN.CONV_DIMS = [-1]
+
+_C.MODEL.RPN.FREEZE = False
 
 # ---------------------------------------------------------------------------- #
 # ROI HEADS options

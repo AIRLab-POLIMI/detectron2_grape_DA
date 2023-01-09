@@ -202,6 +202,7 @@ class RPN(nn.Module):
         loss_weight: Union[float, Dict[str, float]] = 1.0,
         box_reg_loss_type: str = "smooth_l1",
         smooth_l1_beta: float = 0.0,
+        freeze=False,
     ):
         """
         NOTE: this interface is experimental.
@@ -234,6 +235,7 @@ class RPN(nn.Module):
             box_reg_loss_type (str): Loss type to use. Supported losses: "smooth_l1", "giou".
             smooth_l1_beta (float): beta parameter for the smooth L1 regression loss. Default to
                 use L1 loss. Only used when `box_reg_loss_type` is "smooth_l1"
+            freeze (Bool): if True, all RPN parameters are frozen. Used for SFT of layers.
         """
         super().__init__()
         self.in_features = in_features
@@ -254,10 +256,16 @@ class RPN(nn.Module):
         self.loss_weight = loss_weight
         self.box_reg_loss_type = box_reg_loss_type
         self.smooth_l1_beta = smooth_l1_beta
+        self.freeze = freeze
+
+        if self.freeze:
+            for p in self.rpn_head.parameters():
+                p.requires_grad = False
 
     @classmethod
     def from_config(cls, cfg, input_shape: Dict[str, ShapeSpec]):
         in_features = cfg.MODEL.RPN.IN_FEATURES
+        freeze = cfg.MODEL.RPN.FREEZE
         ret = {
             "in_features": in_features,
             "min_box_size": cfg.MODEL.PROPOSAL_GENERATOR.MIN_SIZE,
@@ -272,6 +280,7 @@ class RPN(nn.Module):
             "box2box_transform": Box2BoxTransform(weights=cfg.MODEL.RPN.BBOX_REG_WEIGHTS),
             "box_reg_loss_type": cfg.MODEL.RPN.BBOX_REG_LOSS_TYPE,
             "smooth_l1_beta": cfg.MODEL.RPN.SMOOTH_L1_BETA,
+            "freeze": freeze,
         }
 
         ret["pre_nms_topk"] = (cfg.MODEL.RPN.PRE_NMS_TOPK_TRAIN, cfg.MODEL.RPN.PRE_NMS_TOPK_TEST)

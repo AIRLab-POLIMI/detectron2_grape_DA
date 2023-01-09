@@ -31,7 +31,7 @@ class FPN(Backbone):
         top_block=None,
         fuse_type="sum",
         square_pad=0,
-        fpn_sft_at=1,
+        fpn_sft_at=0,
     ):
         """
         Args:
@@ -57,7 +57,7 @@ class FPN(Backbone):
                 which takes the element-wise mean of the two.
             square_pad (int): If > 0, require input images to be padded to specific square size.
             fpn_sft_at (int): If > 1, only one of the FPN blocks is fine-tuned. Numbering goes from 2 to 5.
-
+                              if =1, freeze all fpn params
         """
         super(FPN, self).__init__()
         assert isinstance(bottom_up, Backbone)
@@ -118,10 +118,9 @@ class FPN(Backbone):
         assert fuse_type in {"avg", "sum"}
         self._fuse_type = fuse_type
 
-        if fpn_sft_at > 1:
+        if fpn_sft_at > 0:
             tgt_params = [p for n_, p in self.named_parameters() if not str(fpn_sft_at) in str(
                 n_)]  # e.g. 2 in name: all except backbone.fpn_lateral2.*, backbone.fpn_output2.*
-            print("FPN params to be frozen")
             for p in tgt_params:
                 p.requires_grad = False
 
