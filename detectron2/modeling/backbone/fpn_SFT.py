@@ -118,8 +118,9 @@ class FPN(Backbone):
         self._fuse_type = fuse_type
 
         if fpn_freeze:
-            for p in self.parameters():
-                p.requires_grad = False
+            for n,p in self.named_parameters():
+                if "fpn" in n:
+                    p.requires_grad = False
         """if fpn_sft_at > 0:
             tgt_params = [p for n_, p in self.named_parameters() if not str(fpn_sft_at) in str(
                 n_)]  # e.g. 2 in name: all except backbone.fpn_lateral2.*, backbone.fpn_output2.*
