@@ -118,10 +118,10 @@ class FPN(Backbone):
         assert fuse_type in {"avg", "sum"}
         self._fuse_type = fuse_type
 
-        if fpn_sft_at>1:
-            tgt_params = [p for p in self.parameters() if not str(fpn_sft_at) in p] # e.g. 2 in name: all except backbone.fpn_lateral2.*, backbone.fpn_output2.*
+        if fpn_sft_at > 1:
+            tgt_params = [p for n_, p in self.named_parameters() if not str(fpn_sft_at) in str(
+                n_)]  # e.g. 2 in name: all except backbone.fpn_lateral2.*, backbone.fpn_output2.*
             print("FPN params to be frozen")
-            print(tgt_params)
             for p in tgt_params:
                 p.requires_grad = False
 
