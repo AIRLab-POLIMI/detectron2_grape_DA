@@ -9,6 +9,8 @@ MODEL:
   BACKBONE:
     FREEZE_AT: 0
     SFT_AT: 0  # Freeze all but layer no., keep freeze_at to 0 if used
+  FPN:
+    FREEZE: False # if True, freeze all FPN blocks
   ROI_HEADS:
     FREEZE: False #if SFT_AT >0 set to True
   RPN:

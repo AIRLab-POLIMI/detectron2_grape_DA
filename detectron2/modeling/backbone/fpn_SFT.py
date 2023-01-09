@@ -31,7 +31,7 @@ class FPN(Backbone):
         top_block=None,
         fuse_type="sum",
         square_pad=0,
-        fpn_sft_at=0,
+        fpn_freeze=False,
     ):
         """
         Args:
@@ -56,8 +56,7 @@ class FPN(Backbone):
                 ones. It can be "sum" (default), which sums up element-wise; or "avg",
                 which takes the element-wise mean of the two.
             square_pad (int): If > 0, require input images to be padded to specific square size.
-            fpn_sft_at (int): If > 1, only one of the FPN blocks is fine-tuned. Numbering goes from 2 to 5.
-                              if =1, freeze all fpn params
+            fpn_freeze (Bool): if True, freeze all fpn blocks
         """
         super(FPN, self).__init__()
         assert isinstance(bottom_up, Backbone)
@@ -118,11 +117,14 @@ class FPN(Backbone):
         assert fuse_type in {"avg", "sum"}
         self._fuse_type = fuse_type
 
-        if fpn_sft_at > 0:
+        if fpn_freeze:
+            for p in self.parameters():
+                p.requires_grad = False
+        """if fpn_sft_at > 0:
             tgt_params = [p for n_, p in self.named_parameters() if not str(fpn_sft_at) in str(
                 n_)]  # e.g. 2 in name: all except backbone.fpn_lateral2.*, backbone.fpn_output2.*
             for p in tgt_params:
-                p.requires_grad = False
+                p.requires_grad = False"""
 
     @property
     def size_divisibility(self):
@@ -242,12 +244,12 @@ def build_resnet_fpn_backbone(cfg, input_shape: ShapeSpec):
     bottom_up = build_resnet_backbone(cfg, input_shape)
     in_features = cfg.MODEL.FPN.IN_FEATURES
     out_channels = cfg.MODEL.FPN.OUT_CHANNELS
-    fpn_sft_at = cfg.MODEL.FPN.SFT_AT
+    fpn_freeze = cfg.MODEL.FPN.FREEZE
     backbone = FPN(
         bottom_up=bottom_up,
         in_features=in_features,
         out_channels=out_channels,
-        fpn_sft_at=fpn_sft_at,
+        fpn_freeze=fpn_freeze,
         norm=cfg.MODEL.FPN.NORM,
         top_block=LastLevelMaxPool(),
         fuse_type=cfg.MODEL.FPN.FUSE_TYPE,
