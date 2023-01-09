@@ -32,6 +32,8 @@ class FPN(Backbone):
         fuse_type="sum",
         square_pad=0,
         fpn_freeze=False,
+        fpn_jsft=False,
+        res_sftat=0,
     ):
         """
         Args:
@@ -57,6 +59,8 @@ class FPN(Backbone):
                 which takes the element-wise mean of the two.
             square_pad (int): If > 0, require input images to be padded to specific square size.
             fpn_freeze (Bool): if True, freeze all fpn blocks
+            fpn_jsft (Bool): if True, SFT jointly FPN based on no. at MODEL.BACKBONE.SFT_AT
+            res_sftat (int): Block no. set for SFT of the ResNet backbone
         """
         super(FPN, self).__init__()
         assert isinstance(bottom_up, Backbone)
@@ -119,13 +123,10 @@ class FPN(Backbone):
 
         if fpn_freeze:
             for n,p in self.named_parameters():
-                if "fpn" in n:
+                if "fpn" in n and not fpn_jsft:
                     p.requires_grad = False
-        """if fpn_sft_at > 0:
-            tgt_params = [p for n_, p in self.named_parameters() if not str(fpn_sft_at) in str(
-                n_)]  # e.g. 2 in name: all except backbone.fpn_lateral2.*, backbone.fpn_output2.*
-            for p in tgt_params:
-                p.requires_grad = False"""
+                elif "fpn" in n and fpn_jsft and not (("output%i" % res_sftat in n) or ("lateral%i" % res_sftat in n)):
+                    p.requires_grad = False
 
     @property
     def size_divisibility(self):
@@ -246,11 +247,15 @@ def build_resnet_fpn_backbone(cfg, input_shape: ShapeSpec):
     in_features = cfg.MODEL.FPN.IN_FEATURES
     out_channels = cfg.MODEL.FPN.OUT_CHANNELS
     fpn_freeze = cfg.MODEL.FPN.FREEZE
+    fpn_jsft = cfg.MODEL.FPN.JOINT_SFT
+    res_sftat = cfg.MODEL.BACKBONE.SFT_AT
     backbone = FPN(
         bottom_up=bottom_up,
         in_features=in_features,
         out_channels=out_channels,
         fpn_freeze=fpn_freeze,
+        fpn_jsft=fpn_jsft,
+        res_sftat = res_sftat,
         norm=cfg.MODEL.FPN.NORM,
         top_block=LastLevelMaxPool(),
         fuse_type=cfg.MODEL.FPN.FUSE_TYPE,

@@ -155,6 +155,7 @@ _C.MODEL.FPN.NORM = ""
 _C.MODEL.FPN.FUSE_TYPE = "sum"
 
 _C.MODEL.FPN.FREEZE = False
+_C.MODEL.FPN.JOINT_SFT = False
 
 # ---------------------------------------------------------------------------- #
 # Proposal generator options
