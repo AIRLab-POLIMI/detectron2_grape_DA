@@ -6,7 +6,7 @@ import torch.nn as nn
 from timm.models.layers import DropPath, Mlp, trunc_normal_
 
 from detectron2.layers import CNNBlockBase, Conv2d, get_norm
-from detectron2.modeling.backbone.fpn import _assert_strides_are_log2_contiguous
+from detectron2.modeling.backbone.fpn_SFT import _assert_strides_are_log2_contiguous
 
 from .backbone import Backbone
 from .utils import (
