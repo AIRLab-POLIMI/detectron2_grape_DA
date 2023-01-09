@@ -8,7 +8,7 @@ from detectron2 import model_zoo
 from detectron2.config import get_cfg
 from detectron2.layers import ShapeSpec
 from detectron2.modeling.backbone import build_resnet_backbone
-from detectron2.modeling.backbone.fpn import build_resnet_fpn_backbone
+from detectron2.modeling.backbone.fpn_SFT import build_resnet_fpn_backbone
 
 
 class TestBackBone(unittest.TestCase):

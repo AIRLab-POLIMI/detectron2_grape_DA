@@ -154,6 +154,7 @@ _C.MODEL.FPN.NORM = ""
 # Types for fusing the FPN top-down and lateral features. Can be either "sum" or "avg"
 _C.MODEL.FPN.FUSE_TYPE = "sum"
 
+_C.MODEL.FPN.SFT_AT = 1
 
 # ---------------------------------------------------------------------------- #
 # Proposal generator options

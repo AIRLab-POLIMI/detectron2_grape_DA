@@ -31,6 +31,7 @@ class FPN(Backbone):
         top_block=None,
         fuse_type="sum",
         square_pad=0,
+        fpn_sft_at=1,
     ):
         """
         Args:
@@ -55,6 +56,8 @@ class FPN(Backbone):
                 ones. It can be "sum" (default), which sums up element-wise; or "avg",
                 which takes the element-wise mean of the two.
             square_pad (int): If > 0, require input images to be padded to specific square size.
+            fpn_sft_at (int): If > 1, only one of the FPN blocks is fine-tuned. Numbering goes from 2 to 5.
+
         """
         super(FPN, self).__init__()
         assert isinstance(bottom_up, Backbone)
@@ -114,6 +117,13 @@ class FPN(Backbone):
         self._square_pad = square_pad
         assert fuse_type in {"avg", "sum"}
         self._fuse_type = fuse_type
+
+        if fpn_sft_at>1:
+            tgt_params = [p for p in self.parameters() if not str(fpn_sft_at) in p] # e.g. 2 in name: all except backbone.fpn_lateral2.*, backbone.fpn_output2.*
+            print("FPN params to be frozen")
+            print(tgt_params)
+            for p in tgt_params:
+                p.requires_grad = False
 
     @property
     def size_divisibility(self):
@@ -233,10 +243,12 @@ def build_resnet_fpn_backbone(cfg, input_shape: ShapeSpec):
     bottom_up = build_resnet_backbone(cfg, input_shape)
     in_features = cfg.MODEL.FPN.IN_FEATURES
     out_channels = cfg.MODEL.FPN.OUT_CHANNELS
+    fpn_sft_at = cfg.MODEL.FPN.SFT_AT
     backbone = FPN(
         bottom_up=bottom_up,
         in_features=in_features,
         out_channels=out_channels,
+        fpn_sft_at=fpn_sft_at,
         norm=cfg.MODEL.FPN.NORM,
         top_block=LastLevelMaxPool(),
         fuse_type=cfg.MODEL.FPN.FUSE_TYPE,
