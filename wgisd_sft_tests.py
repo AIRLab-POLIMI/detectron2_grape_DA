@@ -7,14 +7,14 @@ Original file is located at
     https://colab.research.google.com/drive/1Vq_h7Wj76pGyuKoeePinuykTyyAlKqtH
 
 Install detectron2 dependencies
-"""
 
-"""Based on code by A. Ceruti, extended to support Surgical Fine Tuning
+
+\"""Based on code by A. Ceruti, extended to support Surgical Fine Tuning
 
 Classify as grape bunch or not (binary)
-"""
+\"""
 
-##Register data
+"""##Register data
 
 from detectron2.data.datasets import register_coco_instances
 import os
@@ -111,7 +111,7 @@ class Mapper(DatasetMapper):
 
 """LossEvalHook and EarlyStopping are not in the original detectron2 package -- declared in the following as custom classes"""
 
-import numpy as np
+"""import numpy as np
 from detectron2.data import build_detection_train_loader
 from detectron2.engine.hooks import HookBase
 from detectron2.evaluation import inference_context
@@ -233,9 +233,11 @@ class EarlyStopping(HookBase):
                     ),
                     n=2,
                 )
-
+"""
 """Detectron2 default trainer"""
 
+import torch
+import numpy as np
 from detectron2.engine import hooks
 from fvcore.nn.precise_bn import get_bn_modules
 from detectron2.data import build_detection_test_loader, build_detection_train_loader
@@ -276,27 +278,11 @@ class Trainer(DefaultTrainer):
           self._last_eval_results = self.test(self.cfg, self.model)
           return self._last_eval_results
 
-      # Do evaluation after checkpointer, because then if it fails,
-      # we can use the saved checkpoint to debug.
-      #ret.append(hooks.EvalHook(cfg.TEST.EVAL_PERIOD, test_and_save_results))
-      #ret.append(hooks.BestCheckpointer(cfg.TEST.EVAL_PERIOD, self.checkpointer, "bbox/AP50", "max", file_prefix="model_best_bbox"))
-      #ret.append(hooks.BestCheckpointer(cfg.TEST.EVAL_PERIOD, self.checkpointer, "segm/AP50", "max", file_prefix="model_best_segm"))
-      ##TODO HERE: add the BestCKPT hook on validation loss:
-      #1-Bestckpt will save the model_best 
-      #2-create Early stopping hook that: reads from metrics.json the best val loss iteration and run the logic
-      #ret.append(hooks.BestCheckpointer(cfg.TEST.EVAL_PERIOD, self.checkpointer, "validation_loss", "max", file_prefix="model_best_validationLoss"))
-
-      #mapper = Mapper(cfg, is_train=True, augmentations=[])
-      #ret.append(LossEvalHook(self.cfg, self.model, build_detection_test_loader(self.cfg, self.cfg.DATASETS.TEST[0], mapper)))
-      #ret.append(hooks.BestCheckpointer(cfg.TEST.EVAL_PERIOD, self.checkpointer, "validation_loss", "min", file_prefix="model_valLoss"))
-
       if comm.is_main_process():
           # Here the default print/log frequency of each writer is used.
           # run writers in the end, so that evaluation metrics are written
           ret.append(hooks.PeriodicWriter(self.build_writers(), period=39))
 
-      #append our EarlyStopping Hook in order to stop computation if the patience is reached (patience is 25 * validation period )
-      #ret.append(EarlyStopping(self.cfg, 30))
 
       return ret
 
@@ -324,9 +310,8 @@ from detectron2.config import get_cfg
 from detectron2 import model_zoo
 
 cfg = get_cfg()
-custom_cfg ='Misc/scratch_mask_rcnn_R_50_FPN_9x_gn_SFT.yaml' #path must start relative to detectron2/configs location
+custom_cfg ='COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml' #'Misc/scratch_mask_rcnn_R_50_FPN_9x_gn_SFT.yaml' #'COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml' #Misc/scratch_mask_rcnn_R_50_FPN_9x_gn_SFT.yaml' #path must start relative to detectron2/configs location
 cfg.merge_from_file(model_zoo.get_config_file(custom_cfg))
-
 
 
 cfg.DATALOADER.NUM_WORKERS = 2
@@ -342,11 +327,10 @@ cfg.INPUT.FORMAT = "BGR"
 #cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url(custom_cfg) #they are "" in the config
 cfg.MODEL.BACKBONE.FREEZE_AT = 0
 cfg.MODEL.BACKBONE.SFT_AT = 2 #must be <= 5 (5 resnet blocks, where 1 is the stem)
-cfg.MODEL.ROI_HEADS.FREEZE = True # if True freeze ROI heads
 cfg.MODEL.ROI_HEADS.NUM_CLASSES = 1
 cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.9 
 cfg.MODEL.ROI_HEADS.NMS_THRESH_TEST = 0.5
-cfg.MODEL.FPN.FREEZE = True  # if True, applies SFT to same res block as SFT-ed backbone. Set False if only stem is SFT-ed
+cfg.MODEL.ROI_HEADS.FREEZE = True  # if True, applies SFT to same res block as SFT-ed backbone. Set False if only stem is SFT-ed
 cfg.MODEL.FPN.JOINT_SFT= True
 cfg.MODEL.RPN.FREEZE = True # If True, freeze RPN heads
 
@@ -366,7 +350,7 @@ cfg.TEST.AUG.MAX_SIZE = 2048
 cfg.MODEL.PIXEL_MEAN =  [103.530, 116.280, 123.675]                              #BGR: [113.603, 123.196, 118.612]          RGB: [118.612, 123.196, 113.603]
 cfg.MODEL.PIXEL_STD = [1.0, 1.0, 1.0]                                            #BGR: [0.30522742, 0.26201303, 0.25535114]    RGB: [0.25535114, 0.26201303, 0.30522742]
 
-cfg.OUTPUT_DIR = "./RGB_MaskRCNN_SFT_wgisd_output"
+cfg.OUTPUT_DIR = "./RGB_MaskRCNN_SFT2J_wgisd_output"
 
 
 print("################################ CFG personalized")
@@ -390,14 +374,16 @@ print("%i parameters to be trained" % cnt)
 
 """Training starts here"""
 
-"""trainer.train()
+trainer.train()
 
+
+"""
 \"""Visualize losses\"""
 
 import json
 import matplotlib.pyplot as plt
 
-experiment_folder = '/content/RGB_MaskRCNN_SFT_wgisd_output'
+experiment_folder = './RGB_MaskRCNN_SFT_wgisd_output'
 
 def load_json_arr(json_path):
     lines = []
@@ -409,27 +395,27 @@ def load_json_arr(json_path):
 experiment_metrics = load_json_arr(experiment_folder + '/metrics.json')
 iters_total_loss = [x['iteration'] for x in experiment_metrics if 'total_loss' in x]
 total_loss = [x['total_loss'] for x in experiment_metrics if 'total_loss' in x]
-iters_val_loss = [x['iteration'] for x in experiment_metrics if 'validation_loss' in x]
-val_loss = [x['validation_loss'] for x in experiment_metrics if 'validation_loss' in x]
-iters_ap50 = [x['iteration'] for x in experiment_metrics if 'bbox/AP50' in x]
-ap50 = [x['bbox/AP50'] for x in experiment_metrics if 'bbox/AP50' in x]
 
 fig, ax = plt.subplots()
 ax.plot(iters_total_loss, total_loss)
-ax.plot(iters_val_loss, val_loss)
+#ax.plot(iters_val_loss, val_loss)
 ax.set_xlabel('iteration')
 ax.set_ylabel('loss')
-ax.legend(['total_loss', 'validation_loss'], loc='best')
-iter = val_loss.index(min(val_loss))
-ax.vlines(iters_val_loss[iter], 0, float(max(val_loss)),color="red")
-ax.annotate('min val loss: %f at iter: %d'%(float(min(val_loss)),int(iters_val_loss[iter])),xy=(iters_val_loss[iter],min(val_loss)),xytext=(+15,+15),textcoords='offset points',fontsize=8) #arrowprops=dict(arrowstyle='->',connectionstyle='arc3,rad=.2')
-ax.set_xlim([0,max(max(iters_total_loss),max(iters_val_loss))])
-ax.set_ylim([0,5.0])
+#ax.legend(['total_loss', 'validation_loss'], loc='best')
+ax.set_title('training_loss')
+#ax.legend(['total_loss'], loc='best')
+#iter = val_loss.index(min(val_loss))
+iter_ = total_loss.index(min(total_loss))
+ax.vlines(iters_total_loss[iter_], 0, float(max(total_loss)),color="red")
+ax.annotate('min loss: %f at iter: %d'%(float(min(total_loss)),int(iters_total_loss[iter_])),xy=(iters_total_loss[iter_],min(total_loss)),xytext=(+15,+15),textcoords='offset points',fontsize=8) #arrowprops=dict(arrowstyle='->',connectionstyle='arc3,rad=.2')
+ax.set_xlim([0,max(iters_total_loss)])
+ax.set_ylim([0,4.0])
 
-plt.show()
-path = experiment_folder + '/loss.jpg'
+#plt.show()
+path = '../data/'+experiment_folder+'_training_loss.jpg' #experiment_folder + '/loss.jpg'
 plt.savefig(path)
 plt.close()
+
 
 # Commented out IPython magic to ensure Python compatibility.
 # %load_ext tensorboard
