@@ -1,4 +1,4 @@
-# Grape Bunch Instance Segmentation 
+# Custom Mask RCNN for Surgical Fine-tuning 
 We apply "surgical fine-tuning" (Lee et al., 2020) to the MaskRCNN pipeline of the detectron2 library (Wu et al., 2019)
 by modifying the configuration of ResNet backbones in detectron2.
 
