@@ -837,6 +837,135 @@ def semantic_segmentation_evaluation(coco_gt, coco_dt, output_dir):
 
 class COCOEvaluatorCustom(COCOEvaluator):
 
+    def __init__(
+            self,
+            dataset_name,
+            tasks=None,
+            distributed=True,
+            output_dir=None,
+            *,
+            max_dets_per_image=None,
+            use_fast_impl=False,
+            kpt_oks_sigmas=(),
+            allow_cached_coco=True,
+    ):
+        self._logger = logging.getLogger(__name__)
+        self._distributed = distributed
+        self._output_dir = output_dir
+        self._use_fast_impl = use_fast_impl
+
+        # see https://github.com/cocodataset/cocoapi/pull/559/files
+        if max_dets_per_image is None:
+            max_dets_per_image = None
+        else:
+            max_dets_per_image = [1, 10, max_dets_per_image]
+        self._max_dets_per_image = max_dets_per_image
+
+        if tasks is not None and isinstance(tasks, CfgNode):
+            kpt_oks_sigmas = (
+                tasks.TEST.KEYPOINT_OKS_SIGMAS if not kpt_oks_sigmas else kpt_oks_sigmas
+            )
+            self._logger.warn(
+                "COCO Evaluator instantiated using config, this is deprecated behavior."
+                " Please pass in explicit arguments instead."
+            )
+            self._tasks = None  # Infering it from predictions should be better
+        else:
+            self._tasks = tasks
+
+        self._cpu_device = torch.device("cpu")
+
+        self._metadata = MetadataCatalog.get(dataset_name)
+        if not hasattr(self._metadata, "json_file"):
+            if output_dir is None:
+                raise ValueError(
+                    "output_dir must be provided to COCOEvaluator "
+                    "for datasets not in COCO format."
+                )
+            self._logger.info(f"Trying to convert '{dataset_name}' to COCO format ...")
+
+            cache_path = os.path.join(output_dir, f"{dataset_name}_coco_format.json")
+            self._metadata.json_file = cache_path
+            convert_to_coco_json(dataset_name, cache_path, allow_cached=allow_cached_coco)
+
+        json_file = PathManager.get_local_path(self._metadata.json_file)
+        with contextlib.redirect_stdout(io.StringIO()):
+            self._coco_api = COCO(json_file)  # instantiate ground truth
+
+        # Test set json files do not contain annotations (evaluation must be
+        # performed using the COCO evaluation server).
+        self._do_evaluation = "annotations" in self._coco_api.dataset
+        if self._do_evaluation:
+            self._kpt_oks_sigmas = kpt_oks_sigmas
+
+    def reset(self):
+        self._predictions = []
+
+    def process(self, inputs, outputs):
+        """
+        Args:
+            inputs: the inputs to a COCO model (e.g., GeneralizedRCNN).
+                It is a list of dict. Each dict corresponds to an image and
+                contains keys like "height", "width", "file_name", "image_id".
+            outputs: the outputs of a COCO model. It is a list of dicts with key
+                "instances" that contains :class:`Instances`.
+        """
+        for input, output in zip(inputs, outputs):
+            prediction = {"image_id": input["image_id"]}
+
+            if "instances" in output:
+                instances = output["instances"].to(self._cpu_device)
+                prediction["instances"] = instances_to_coco_json(instances, input["image_id"])
+            if "proposals" in output:
+                prediction["proposals"] = output["proposals"].to(self._cpu_device)
+            if len(prediction) > 1:
+                self._predictions.append(prediction)
+
+    def evaluate(self, img_ids=None):
+        """
+        Args:
+            img_ids: a list of image IDs to evaluate on. Default to None for the whole dataset
+        """
+        if self._distributed:
+            comm.synchronize()
+            predictions = comm.gather(self._predictions, dst=0)
+            predictions = list(itertools.chain(*predictions))
+
+            if not comm.is_main_process():
+                return {}
+        else:
+            predictions = self._predictions
+
+        if len(predictions) == 0:
+            self._logger.warning("[COCOEvaluator] Did not receive valid predictions.")
+            return {}
+
+        if self._output_dir:
+            PathManager.mkdirs(self._output_dir)
+            file_path = os.path.join(self._output_dir, "instances_predictions.pth")
+            with PathManager.open(file_path, "wb") as f:
+                torch.save(predictions, f)
+
+        self._results = OrderedDict()
+        if "proposals" in predictions[0]:
+            self._eval_box_proposals(predictions)
+        if "instances" in predictions[0]:
+            self._eval_predictions(predictions, img_ids=img_ids)
+        # Copy so the caller can do whatever with results
+        return copy.deepcopy(self._results)
+
+    def _tasks_from_predictions(self, predictions):
+        """
+        Get COCO API "tasks" (i.e. iou_type) from COCO-format predictions.
+        """
+        tasks = {"bbox"}
+        for pred in predictions:
+            if "segmentation" in pred:
+                tasks.add("segm")
+            if "keypoints" in pred:
+                tasks.add("keypoints")
+        return sorted(tasks)
+
     def _eval_predictions(self, predictions, img_ids=None):
         """
         Evaluate predictions. Fill self._results with the metrics of the tasks.
