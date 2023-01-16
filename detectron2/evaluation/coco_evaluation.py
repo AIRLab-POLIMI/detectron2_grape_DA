@@ -720,3 +720,361 @@ class COCOevalMaxDets(COCOeval):
 
     def __str__(self):
         self.summarize()
+
+
+
+"""Custom part to compute P,R,F1 for different IoU thresholds
+from: https://github.com/andreaceruti/detectron2_rgbd/blob/main/detectron2/evaluation/coco_evaluation.py
+"""
+
+
+class COCOevalExtended(COCOeval):
+    def computeIoU(self, imgId, catId):
+        p = self.params
+        if p.useCats:
+            gt = self._gts[imgId, catId]
+            dt = self._dts[imgId, catId]
+        else:
+            gt = [_ for cId in p.catIds for _ in self._gts[imgId, cId]]
+            dt = [_ for cId in p.catIds for _ in self._dts[imgId, cId]]
+        if len(gt) == 0 and len(dt) == 0:
+            return []
+        inds = np.argsort([-d['score'] for d in dt], kind='mergesort')
+        dt = [dt[i] for i in inds]
+        if p.maxDets[-1] and len(dt) > p.maxDets[-1]:  # before if len(dt) > p.maxDets[-1]:
+            dt = dt[0:p.maxDets[-1]]
+
+        if p.iouType == 'segm':
+            g = [g['segmentation'] for g in gt]
+            d = [d['segmentation'] for d in dt]
+        elif p.iouType == 'bbox':
+            g = [g['bbox'] for g in gt]
+            d = [d['bbox'] for d in dt]
+        else:
+            raise Exception('unknown iouType for iou computation')
+
+        # compute iou between each dt and gt region
+        iscrowd = [int(o['iscrowd']) for o in gt]
+        ious = mask_util.iou(d, g, iscrowd)
+        return ious
+
+
+def semantic_segmentation_evaluation(coco_gt, coco_dt, output_dir):
+    imgIds_gt = coco_gt.getImgIds()
+    imgIds_dt = coco_dt.getImgIds()
+    assert (imgIds_gt == imgIds_dt), "some img missing"
+
+    results_file_path_seg = output_dir
+    total_precision = 0
+    total_recall = 0
+    total_f1 = 0
+
+    for imgId in imgIds_gt:
+        img_Ids = []
+        img_Ids.append(imgId)
+        # retrieve gt and dt annotations for one single image of the dataset
+        annIds_gt = coco_gt.getAnnIds(imgIds=img_Ids)
+        annIds_dt = coco_dt.getAnnIds(imgIds=img_Ids)
+        anns_gt = coco_gt.loadAnns(annIds_gt)
+        anns_dt = coco_dt.loadAnns(annIds_dt)
+
+        # create mask_gt and mask_dt of the single image from retrieved annotations
+        masks_gt = []
+        for i in range(len(anns_gt)):
+            masks_gt.append(coco_gt.annToMask(anns_gt[i]))
+
+        shape = masks_gt[0].shape
+        complete_mask_gt = np.full(shape, 0, dtype=np.uint8)
+        for i in range(len(masks_gt)):
+            complete_mask_gt = complete_mask_gt | masks_gt[i]
+
+        masks_dt = []
+        for i in range(len(anns_dt)):
+            masks_dt.append(mask_util.decode(anns_dt[i]["segmentation"]))
+
+        complete_mask_dt = np.full(shape, 0, dtype=np.uint8)
+        for i in range(len(masks_dt)):
+            complete_mask_dt = complete_mask_dt | masks_dt[i]
+
+        assert (complete_mask_gt.shape == complete_mask_dt.shape), "mask shapes not corresponding"
+
+        tps = complete_mask_gt & complete_mask_dt
+        fps = ~complete_mask_gt & complete_mask_dt
+        fns = complete_mask_gt & ~complete_mask_dt
+        precision = np.sum(tps) / (np.sum(tps) + np.sum(fps))
+        recall = np.sum(tps) / (np.sum(tps) + np.sum(fns))
+        f1 = 2 * precision * recall / (precision + recall)
+
+        img_object_gt = coco_gt.imgs[imgId]
+        img_name = img_object_gt["file_name"]
+
+        result_string = img_name + "| precision= " + str(round(precision, 3)) + ", recall= " + str(
+            round(recall, 3)) + ", f1= " + str(round(f1, 3)) + "\n"
+        with open(results_file_path_seg + "/semantic_segmentation.txt", "a") as f:
+            f.write(result_string)
+            f.close()
+
+        total_precision = total_precision + precision
+        total_recall = total_recall + recall
+        total_f1 = total_f1 + f1
+
+    dataset_length = len(imgIds_gt)
+    avg_precision = total_precision / dataset_length
+    avg_recall = total_recall / dataset_length
+    avg_f1 = total_f1 / dataset_length
+
+    print("IMAGES IDS LENGTH: {}".format(dataset_length))
+
+    result_string = "TOTAL DATASET" + "| precision= " + str(round(avg_precision, 3)) + ", recall= " + str(
+        round(avg_recall, 3)) + ", f1= " + str(round(avg_f1, 3)) + "\n"
+    with open(results_file_path_seg + "/semantic_segmentation.txt", "a") as f:
+        f.write(result_string)
+        f.close()
+
+    return
+
+
+
+class COCOEvaluatorCustom(COCOEvaluator):
+
+    def _eval_predictions(self, predictions, img_ids=None):
+        """
+        Evaluate predictions. Fill self._results with the metrics of the tasks.
+        """
+        self._logger.info("Preparing results for COCO format ...")
+        coco_results = list(itertools.chain(*[x["instances"] for x in predictions]))
+        tasks = self._tasks or self._tasks_from_predictions(coco_results)
+
+        # unmap the category ids for COCO
+        if hasattr(self._metadata, "thing_dataset_id_to_contiguous_id"):
+            dataset_id_to_contiguous_id = self._metadata.thing_dataset_id_to_contiguous_id
+            all_contiguous_ids = list(dataset_id_to_contiguous_id.values())
+            num_classes = len(all_contiguous_ids)
+            assert min(all_contiguous_ids) == 0 and max(all_contiguous_ids) == num_classes - 1
+
+            reverse_id_mapping = {v: k for k, v in dataset_id_to_contiguous_id.items()}
+            for result in coco_results:
+                category_id = result["category_id"]
+                assert category_id < num_classes, (
+                    f"A prediction has class={category_id}, "
+                    f"but the dataset only has {num_classes} classes and "
+                    f"predicted class id should be in [0, {num_classes - 1}]."
+                )
+                result["category_id"] = reverse_id_mapping[category_id]
+
+        if self._output_dir:
+            file_path = os.path.join(self._output_dir, "coco_instances_results.json")
+            self._logger.info("Saving results to {}".format(file_path))
+            with PathManager.open(file_path, "w") as f:
+                f.write(json.dumps(coco_results))
+                f.flush()
+
+        if not self._do_evaluation:
+            self._logger.info("Annotations are not available for evaluation.")
+            return
+
+        self._logger.info(
+            "Evaluating predictions with {} COCO API...".format(
+                "unofficial" if self._use_fast_impl else "official"
+            )
+        )
+        for task in sorted(tasks):
+            assert task in {"bbox", "segm", "keypoints"}, f"Got unknown task: {task}!"
+            coco_eval = (
+                _evaluate_predictions_on_coco_extended(
+                    self._coco_api,
+                    coco_results,
+                    task,
+                    kpt_oks_sigmas=self._kpt_oks_sigmas,
+                    use_fast_impl=self._use_fast_impl,
+                    img_ids=img_ids,
+                    max_dets_per_image=self._max_dets_per_image,
+                    output_dir=self._output_dir
+                )
+                if len(coco_results) > 0
+                else None  # cocoapi does not handle empty results very well
+            )
+
+
+
+def _evaluate_predictions_on_coco_extended(
+        coco_gt,
+        coco_results,
+        iou_type,
+        kpt_oks_sigmas=None,
+        use_fast_impl=True,
+        img_ids=None,
+        max_dets_per_image=None,
+        output_dir="/content/evaluations"
+):
+    """
+    Evaluate the coco results using COCOEval API.
+    """
+
+    assert len(coco_results) > 0
+
+    if iou_type == "segm":
+        coco_results = copy.deepcopy(coco_results)
+        # When evaluating mask AP, if the results contain bbox, cocoapi will
+        # use the box area as the area of the instance, instead of the mask area.
+        # This leads to a different definition of small/medium/large.
+        # We remove the bbox field to let mask AP use mask area.
+        for c in coco_results:
+            c.pop("bbox", None)
+
+    coco_dt = coco_gt.loadRes(coco_results)
+
+    # evaluate semantic segmentation task (only 1 time)
+    if iou_type == "segm":
+        semantic_segmentation_evaluation(coco_gt, coco_dt, output_dir)
+
+    # evaluate object detection and instance segmentation task
+    coco_eval = COCOevalExtended(coco_gt, coco_dt, iou_type)
+
+    # For COCO, the default max_dets_per_image is [1, 10, 100].
+    if max_dets_per_image is None:
+        max_dets_per_image = [1, 10, 100]  # Default from COCOEval
+    else:
+        assert (
+                len(max_dets_per_image) >= 3
+        ), "COCOeval requires maxDets (and max_dets_per_image) to have length at least 3"
+        # In the case that user supplies a custom input for max_dets_per_image,
+        # apply COCOevalMaxDets to evaluate AP with the custom input.
+        # if max_dets_per_image[2] != 100:
+        coco_eval = COCOevalExtended(coco_gt, coco_dt, iou_type)
+
+    if iou_type != "keypoints":
+        coco_eval.params.maxDets = max_dets_per_image
+
+    if img_ids is not None:
+        coco_eval.params.imgIds = img_ids
+
+    if iou_type == "keypoints":
+        # Use the COCO default keypoint OKS sigmas unless overrides are specified
+        if kpt_oks_sigmas:
+            assert hasattr(coco_eval.params, "kpt_oks_sigmas"), "pycocotools is too old!"
+            coco_eval.params.kpt_oks_sigmas = np.array(kpt_oks_sigmas)
+        # COCOAPI requires every detection and every gt to have keypoints, so
+        # we just take the first entry from both
+        num_keypoints_dt = len(coco_results[0]["keypoints"]) // 3
+        num_keypoints_gt = len(next(iter(coco_gt.anns.values()))["keypoints"]) // 3
+        num_keypoints_oks = len(coco_eval.params.kpt_oks_sigmas)
+        assert num_keypoints_oks == num_keypoints_dt == num_keypoints_gt, (
+            f"[COCOEvaluator] Prediction contain {num_keypoints_dt} keypoints. "
+            f"Ground truth contains {num_keypoints_gt} keypoints. "
+            f"The length of cfg.TEST.KEYPOINT_OKS_SIGMAS is {num_keypoints_oks}. "
+            "They have to agree with each other. For meaning of OKS, please refer to "
+            "http://cocodataset.org/#keypoints-eval."
+        )
+
+    custom_iouThrs = np.linspace(.3, 0.9, num=7, endpoint=True)
+    custom_areaRng = [[0, 10000000000.0]]  # try with [0, np.inf]
+
+    coco_eval.params.iouThrs = custom_iouThrs
+    coco_eval.params.areaRng = custom_areaRng
+
+    coco_eval.evaluate()
+
+    nCats = len(coco_eval.params.catIds)  # 1 grape bunch
+    nArea = len(coco_eval.params.areaRng)  # 1 we want all area to be considered
+    nImgs = len(coco_eval.params.imgIds)  # 42 our test set
+
+    assert (len(
+        coco_eval.evalImgs) == nCats * nArea * nImgs), "something wrong with coco_eval.evalImgs, check evaluate_predictions_on_coco"
+
+    #############################################################################################################################
+    # HERE WE CALCULATE TP/FP/TOTAL POSITIVES(GT) AND THEN PRECISION,RECALL,F1 SCORE as the traditional definition
+    # IoU= 0.3 0.4 0.5 0.6 0.7 0.8 0.9
+
+    # source: https://github.com/search?q=for+catIx+in+range%28nCats%29%3A&type=code
+
+    F1_scores_file = "COCOresultsF1.txt"
+    results_file_path = os.path.join(output_dir, F1_scores_file)
+
+    with open(results_file_path, "a") as f:
+        if iou_type == "segm":
+            f.write("INSTANCE SEGMENTATION RESULTS:\n")
+        elif iou_type == "bbox":
+            f.write("OBJECT DETECTION RESULTS:\n")
+        else:
+            f.write("ERROR\n")
+
+    for i in range(len(custom_iouThrs)):
+        IoU_T_IDX = i
+        tp = 0
+        fp = 0
+        n_ign = 0
+        n_gt = 0
+
+        for img in coco_eval.evalImgs:
+            ign = img["dtIgnore"][IoU_T_IDX]
+            mask = ~ign
+            n_ignored = ign.sum()
+            n_ign += n_ignored
+            tp += (img["dtMatches"][IoU_T_IDX][mask] > 0).sum()
+            fp += (img["dtMatches"][IoU_T_IDX][mask] == 0).sum()
+            n_gt += len(img["gtIds"]) - img["gtIgnore"].astype(int).sum()
+
+        recall = tp / n_gt
+        precision = tp / (tp + fp)
+        f1 = 2 * precision * recall / (precision + recall)
+
+        iou_treshold = round(custom_iouThrs[i], 1)
+        result_string = "@iouThr= " + str(iou_treshold) + "| Prec= " + str(round(precision, 3)) + " Recall= " + str(
+            round(recall, 3)) + " F1 = " + str(round(f1, 3)) + " |||" + " TP= " + str(tp) + " FP= " + str(
+            fp) + " GT(TP + FN)= " + str(n_gt) + "\n"
+        with open(results_file_path, "a") as f:
+            f.write(result_string)
+            f.close()
+
+    coco_eval.accumulate()
+
+    #################################################################################################################################
+    # NOW WE CALCULATE THE AVERAGE PRECISION AND THE AVERAGE RECALL AT A GIVEN IOU TRESHOLD
+    # https://github.com/13952522076/mmdet/blob/5bd89c317e3b76211210e58ff64c708e56503f54/mmdet/datasets/coco_bak101.py
+
+    AP_file = "COCOresultsAP.txt"
+    results_file_path_AP = os.path.join(output_dir, AP_file)
+
+    with open(results_file_path_AP, "a") as f:
+        if iou_type == "segm":
+            f.write("INSTANCE SEGMENTATION RESULTS:\n")
+        elif iou_type == "bbox":
+            f.write("OBJECT DETECTION RESULTS:\n")
+        else:
+            f.write("ERROR\n")
+
+    for i in range(len(custom_iouThrs)):
+        IoU_T_IDX = i
+
+        precision = coco_eval.eval['precision']
+        recall = coco_eval.eval['recall']
+
+        precision = precision[IoU_T_IDX, :, :, 0, 2]
+        recall = recall[IoU_T_IDX, :, 0, 2]
+
+        if len(precision[precision > -1]) == 0:
+            mean_precision = -1
+        else:
+            mean_precision = np.mean(precision[precision > -1])
+
+        if len(recall[recall > -1]) == 0:
+            mean_recall = -1
+        else:
+            mean_recall = np.mean(recall[recall > -1])
+
+        iou_treshold = round(custom_iouThrs[i], 1)
+        result_string = "@iouThr= " + str(iou_treshold) + "| AP= " + str(round(mean_precision, 3)) + ", AR= " + str(
+            round(mean_recall, 3)) + "\n"
+
+        with open(results_file_path_AP, "a") as f:
+            f.write(result_string)
+            f.close()
+
+    # mean_F1 = 2*mean_recall*mean_precision/(mean_recall+mean_precision+np.spacing(1))
+    # print("mean f1 as the avergae f1 is {}")
+
+    ################################################################################################################
+    # coco_eval.summarize()
+
+    return coco_eval
