@@ -7,13 +7,13 @@ MODEL:
   RESNETS:
     STRIDE_IN_1X1: False
   BACKBONE:
-    FREEZE_AT: 5
-    SFT_AT: 0  # Freeze all but layer no., keep freeze_at to 0 if used
+    FREEZE_AT: 0
+    SFT_AT: 2 # Freeze all but layer no., keep freeze_at to 0 if used
   FPN:
     FREEZE: True # if True, freeze all FPN blocks
     JOINT_SFT: False #If True, SFT jointly FPN based on no. at SFT_AT, if SFT_AT<=1, set to False
   ROI_HEADS:
-    FREEZE: False #if SFT_AT >0 set to True
+    FREEZE: True #if SFT_AT >0 set to True
     NUM_CLASSES: 1
   RPN:
     FREEZE: True #if SFT_AT >0 set to True
